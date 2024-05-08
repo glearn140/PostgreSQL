@@ -1,0 +1,100 @@
+> Steps to install pglogical on RHEL9 EC2:
+
+```
+sudo dnf install -y https://download.postgresql.org/pub/repos/yum/14/redhat/rhel-9-x86_64/pglogical_14-2.4.2-1.rhel9.x86_64.rpm
+```
+
+> Steps to set logical replication using pglogical:
+
+## Additions in postgresql.conf of publisher node ##
+
+listen_addresses = '*'
+wal_level = logical
+max_wal_senders = 10
+max_replication_slots = 10
+shared_preload_libraries = 'pglogical'
+
+## Additions in pg_hba.conf of publisher node ##
+
+host dbname replicationuser all scram-sha-256
+
+## Additions in postgresql.conf of subscriber node ##
+
+listen_addresses = '*'
+wal_level = logical
+max_worker_processes = 10
+max_wal_senders = 1
+max_replication_slots = 10
+track_commit_timestamp = on
+
+-------------
+On publisher:
+-------------
+
+CREATE EXTENSION pglogical;
+
+asd=# create table test (id int primary key);
+CREATE TABLE
+
+asd=# alter table test replica identity full;
+ALTER TABLE
+
+asd=# select * from test; 
+ id
+----
+  1
+  2
+(2 rows)
+
+asd=# CREATE ROLE pglogical WITH LOGIN REPLICATION SUPERUSER PASSWORD 'xxxxx' ;
+CREATE ROLE
+
+asd=# SELECT pglogical.create_node(
+    node_name := 'provider1',
+    dsn := 'host=10.xp.xp.xp port=5432 dbname=asd user=pglogical password=xxxxx'
+);
+ create_node
+-------------
+  2976894835
+(1 row)
+
+> NOTE: 10.xp.xp.xp is the IP address for the publisher node
+
+asd=# SELECT pglogical.replication_set_add_all_tables('default', ARRAY['public']);
+ replication_set_add_all_tables
+--------------------------------
+ t
+(1 row)
+
+---------------
+On subscriber:
+---------------
+
+asd=# CREATE EXTENSION pglogical;
+CREATE EXTENSION
+
+asd1=# create table test (id int primary key); 
+CREATE TABLE
+
+asd1=# select * from test;
+ id
+----
+(0 rows)
+
+logi=# SELECT pglogical.create_node(node_name := 'subscriber1',dsn := 'host=10.xs.xs.xs port=5432 dbname=asd user=pglogical password=xxxxx');
+ create_node
+-------------
+   330520249
+(1 row)
+
+
+> NOTE: 10.xs.xs.xs is the IP address for the subscriber node
+
+asd1=# SELECT pglogical.create_subscription(
+    subscription_name := 'subscription1',
+    provider_dsn := 'host=10.xp.xp.xp port=5432 dbname=asd user=pglogical password=xxxxx'
+);
+ create_subscription
+---------------------
+          1763399739
+(1 row)
