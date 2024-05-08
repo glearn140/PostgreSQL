@@ -16,7 +16,7 @@ shared_preload_libraries = 'pglogical'
 
 ## Additions in pg_hba.conf of publisher node ##
 
-host dbname replicationuser all scram-sha-256
+host dbname pglogical all   scram-sha-256
 
 ## Additions in postgresql.conf of subscriber node ##
 
@@ -26,6 +26,13 @@ max_worker_processes = 10
 max_wal_senders = 1
 max_replication_slots = 10
 track_commit_timestamp = on
+
+
+## Additions in pg_hba.conf of subscriber node ##
+
+host   dbname   pglogical    all   scram-sha-256
+
+> NOTE: Here 'pglogical' is the replication user created.
 
 -------------
 On publisher:
@@ -80,6 +87,9 @@ asd1=# select * from test;
  id
 ----
 (0 rows)
+
+logi=# CREATE ROLE pglogical WITH LOGIN REPLICATION SUPERUSER PASSWORD 'xxxxx' ;
+CREATE ROLE
 
 logi=# SELECT pglogical.create_node(node_name := 'subscriber1',dsn := 'host=10.xs.xs.xs port=5432 dbname=asd user=pglogical password=xxxxx');
  create_node
