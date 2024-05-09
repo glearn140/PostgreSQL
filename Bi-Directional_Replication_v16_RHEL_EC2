@@ -1,0 +1,126 @@
+> Steps to setup Bi-directional Logical Replication in PostgreSQL v16 on RHEL9 EC2:
+
+## Additions in postgresql.conf of Instance 1 ##
+
+listen_addresses = '*'
+wal_level = logical
+max_wal_senders = 10
+max_replication_slots = 10
+shared_preload_libraries = 'pglogical'
+
+## Additions in pg_hba.conf of Instance 1 ##
+
+host logibdr logicalbdr all   scram-sha-256
+
+
+## Additions in postgresql.conf of Instance 2 ##
+
+listen_addresses = '*'
+wal_level = logical
+max_wal_senders = 10
+max_replication_slots = 10
+shared_preload_libraries = 'pglogical'
+
+## Additions in pg_hba.conf of Instance 2 ##
+
+host logibdr logicalbdr all   scram-sha-256
+
+-----------
+Instance 1:
+-----------
+logibdr=# create table bdrtest (id int);
+CREATE TABLE
+
+logibdr=# CREATE ROLE logicalbdr WITH LOGIN REPLICATION SUPERUSER PASSWORD 'xxxxx';
+CREATE ROLE
+
+logibdr=# CREATE PUBLICATION mypub1 FOR TABLE bdrtest;
+CREATE PUBLICATION
+
+logibdr=# CREATE SUBSCRIPTION mysub1 CONNECTION 'host=10.0.0.15 port=5432 user=logicalbdr dbname=logibdr password=test123' PUBLICATION mypub2 WITH(ORIGIN = NONE);
+NOTICE:  created replication slot "mysub1" on publisher
+CREATE SUBSCRIPTION
+
+logibdr=# select * from bdrtest;
+ id
+----
+(0 rows)
+
+-----------
+Instance 2:
+-----------
+logibdr=# create table bdrtest (id int);
+CREATE TABLE
+
+logibdr=# CREATE ROLE logicalbdr WITH LOGIN REPLICATION SUPERUSER PASSWORD 'xxxxx';
+CREATE ROLE
+
+logibdr=# CREATE PUBLICATION mypub2 FOR TABLE bdrtest;
+CREATE PUBLICATION
+
+logibdr=# CREATE SUBSCRIPTION mysub2 CONNECTION 'host=10.0.0.13 port=5432 user=logicalbdr dbname=logibdr password=test123' PUBLICATION mypub1 WITH(ORIGIN = NONE);
+WARNING:  subscription "mysub2" requested copy_data with origin = NONE but might copy data that had a different origin
+DETAIL:  The subscription being created subscribes to a publication ("mypub1") that contains tables that are written to by other subscriptions.
+HINT:  Verify that initial data copied from the publisher tables did not come from other origins.
+NOTICE:  created replication slot "mysub2" on publisher
+CREATE SUBSCRIPTION
+
+logibdr=# select * from bdrtest;
+ id
+----
+(0 rows)
+
+
+>> Let's insert some rows in "Instance 1" and validate if it gets replicated to "Instance 2":
+
+-----------
+Instance 1:
+-----------
+logibdr=# insert into bdrtest values (1);
+INSERT 0 1
+logibdr=# select * from bdrtest;
+ id
+----
+  1
+(1 row)
+
+-----------
+Instance 2:
+-----------
+logibdr=# select * from bdrtest;
+ id
+----
+  1
+(1 row)
+
+
+>> >> Now, let's insert some rows in "Instance 2" and validate if it gets replicated to "Instance 1":
+
+-----------
+Instance 2:
+-----------
+logibdr=# insert into bdrtest values (1);
+INSERT 0 1
+logibdr=# select * from bdrtest;
+ id
+----
+  1
+  1
+(2 rows)
+
+-----------
+Instance 1:
+-----------
+logibdr=# select * from bdrtest;
+ id
+----
+  1
+  1
+(2 rows)
+
+
+-----------
+References:
+-----------
+[+]https://www.mydbops.com/blog/bidirectional-logical-replication-in-postgresql-16/
+[+]https://www.highgo.ca/2023/12/18/new-in-postgresql-16-bi-directional-logical-replication/
