@@ -149,7 +149,7 @@ bdrpglogical=# show pglogical.conflict_resolution;
 Instance A:
 -----------
 
-bdrpglogical=# SELECT pglogical.create_subscription(subscription_name := 'sub1_node_b',provider_dsn := 'host=10.0.0.15 port=5432 dbname=bdrpglogical user=bdrtest password=test123',replication_sets := array['replication_set_nodeB'],synchronize_data := false,forward_origins := '{}' );
+bdrpglogical=# SELECT pglogical.create_subscription(subscription_name := 'sub2_node_a',provider_dsn := 'host=10.0.0.15 port=5432 dbname=bdrpglogical user=bdrtest password=test123',replication_sets := array['replication_set_nodeB'],synchronize_data := false,forward_origins := '{}' );
  create_subscription
 ---------------------
           2602338886
