@@ -1,0 +1,190 @@
+## Additions in postgresql.conf of publisher node ##
+
+listen_addresses = '*'
+wal_level = logical
+max_wal_senders = 20
+max_replication_slots = 20
+shared_preload_libraries = 'pglogical'
+
+## Additions in pg_hba.conf of publisher node ##
+
+host bdrpglogical bdrtest all   scram-sha-256
+
+## Additions in postgresql.conf of subscriber node ##
+
+listen_addresses = '*'
+wal_level = logical
+max_worker_processes = 20
+max_wal_senders = 20
+max_replication_slots = 20
+shared_preload_libraries = 'pglogical'
+
+## Additions in pg_hba.conf of subscriber node ##
+
+host   bdrpglogical   bdrtest    all   scram-sha-256
+
+> NOTE: Here 'pglogical' is the replication user created.
+
+-----------
+Instance A:
+-----------
+bdrpglogical=# create extension pglogical;
+CREATE EXTENSION
+
+bdrpglogical=# create table bdrreplication (id int primary key);
+CREATE TABLE
+
+bdrpglogical=# alter table bdrreplication replica identity default;
+ALTER TABLE
+
+bdrpglogical=# select * from bdrreplication;
+ id
+----
+(0 rows)
+
+
+bdrpglogical=# CREATE ROLE bdrtest WITH LOGIN REPLICATION SUPERUSER PASSWORD 'test123';
+CREATE ROLE
+
+bdrpglogical=# SELECT pglogical.create_node(node_name := 'nodeA',dsn := 'host=10.0.0.13 port=5432 dbname=bdrpglogical user=bdrtest password=test123');
+ create_node
+-------------
+  2402184772
+(1 row)
+
+bdrpglogical=# select pglogical.create_replication_set('replication_set_nodeA');
+ create_replication_set
+------------------------
+             3786762648
+(1 row)
+
+select pglogical.replication_set_add_table(set_name := 'replication_set_nodeA',relation := 'bdrreplication');
+
+
+-----------
+Instance B:
+-----------
+bdrpglogical=# create extension pglogical;
+CREATE EXTENSION
+
+bdrpglogical=# create table bdrreplication (id int primary key);
+CREATE TABLE
+
+bdrpglogical=# alter table bdrreplication replica identity default;
+ALTER TABLE
+
+bdrpglogical=# CREATE ROLE bdrtest WITH LOGIN REPLICATION SUPERUSER PASSWORD 'test123';
+CREATE ROLE
+
+
+SELECT pglogical.create_node(node_name := 'nodeB',dsn := 'host=10.0.0.15 port=5432 dbname=bdrpglogical user=bdrtest password=test123');
+
+
+bdrpglogical=# SELECT pglogical.create_subscription(subscription_name := 'sub1_node_b',provider_dsn := 'host=10.0.0.13 port=5432 dbname=bdrpglogical user=bdrtest password=test123',replication_sets := array['replication_set_nodeA'],synchronize_data := true,forward_origins := '{}' );
+ create_subscription
+---------------------
+          2602338886
+(1 row)
+
+
+
+>> Let's insert some rows on "Instance A" and validate if it gets replicated to "Instance B":
+
+-----------
+Instance A:
+-----------
+
+bdrpglogical=# select * from bdrreplication;
+ id
+----
+(0 rows)
+
+bdrpglogical=# insert into bdrreplication values (1);
+INSERT 0 1
+bdrpglogical=# select * from bdrreplication;
+ id
+----
+  1
+(1 row)
+
+
+---> At this point, we have successfully set logical replication using pglogical from "Instance A" to "Instance B"
+
+-----------
+Instance B:
+-----------
+
+bdrpglogical=# select * from bdrreplication;
+ id
+----
+  1
+(1 row)
+
+
+>> Let's finish setting up bidirectional replication, i.e. adding logical replication using pglogical from "Instance B" to "Instance A" to the current setup
+
+-----------
+Instance B:
+-----------
+
+bdrpglogical=# select pglogical.create_replication_set('replication_set_nodeB');
+ create_replication_set
+------------------------
+              430346625
+(1 row)
+
+bdrpglogical=# select pglogical.replication_set_add_table(set_name := 'replication_set_nodeB',relation := 'bdrreplication');
+ replication_set_add_table
+---------------------------
+ t
+(1 row)
+
+bdrpglogical=# show pglogical.conflict_resolution;
+ pglogical.conflict_resolution
+-------------------------------
+ first_update_wins
+(1 row)
+
+-----------
+Instance A:
+-----------
+
+bdrpglogical=# SELECT pglogical.create_subscription(subscription_name := 'sub1_node_b',provider_dsn := 'host=10.0.0.15 port=5432 dbname=bdrpglogical user=bdrtest password=test123',replication_sets := array['replication_set_nodeB'],synchronize_data := false,forward_origins := '{}' );
+ create_subscription
+---------------------
+          2602338886
+(1 row)
+
+bdrpglogical=# show pglogical.conflict_resolution;
+ pglogical.conflict_resolution
+-------------------------------
+ apply_remote
+(1 row)
+
+>> Now let's insert some data on "Instance B" and validate if it gets replicated to "Instance A":
+
+
+-----------
+Instance B:
+-----------
+
+bdrpglogical=# insert into bdrreplication values (2);
+INSERT 0 1
+bdrpglogical=# select * from bdrreplication;
+ id
+----
+  1
+  2
+(2 rows)
+
+
+-----------
+Instance A:
+-----------
+
+bdrpglogical=# select * from bdrreplication;
+ id
+----
+  1
+  2
+(2 rows)
