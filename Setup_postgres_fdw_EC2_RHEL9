@@ -1,10 +1,13 @@
+- Remote Database Host: 10.0.0.13
+- Local host: 10.0.0.15
+
 ============
 > Remote Node:
 ============
 postgres=# create extension postgres_fdw;
 CREATE EXTENSION
 
-postgres=# CREATE USER fdw_user WITH ENCRYPTED PASSWORD 'gauravpant';
+postgres=# CREATE USER fdw_user WITH ENCRYPTED PASSWORD 'xxxxxx';
 CREATE ROLE
 
 postgres=# create table fdwtest (id int);
@@ -43,12 +46,12 @@ postgres=# select * from pg_foreign_server;
  17136 | foreigndb_fdw |       10 |  17132 |         |            |        | {host=10.0.0.13,port=5432,dbname=postgres}
 (1 row)
 
-postgres=# CREATE USER MAPPING for postgres SERVER foreigndb_fdw OPTIONS (user 'fdw_user', password 'gauravpant');
+postgres=# CREATE USER MAPPING for postgres SERVER foreigndb_fdw OPTIONS (user 'fdw_user', password 'xxxxxx');
 CREATE USER MAPPING
 postgres=# select * from pg_user_mappings;
  umid  | srvid |    srvname    | umuser | usename  |              umoptions
 -------+-------+---------------+--------+----------+-------------------------------------
- 17137 | 17136 | foreigndb_fdw |     10 | postgres | {user=fdw_user,password=gauravpant}
+ 17137 | 17136 | foreigndb_fdw |     10 | postgres | {user=fdw_user,password=xxxxxx}
 (1 row)
 
 postgres=# CREATE FOREIGN TABLE fdwtest_local (id int) server foreigndb_fdw options(table_name 'fdwtest');
