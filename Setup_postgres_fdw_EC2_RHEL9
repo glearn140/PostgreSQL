@@ -1,0 +1,68 @@
+============
+> Remote Node:
+============
+postgres=# create extension postgres_fdw;
+CREATE EXTENSION
+
+postgres=# CREATE USER fdw_user WITH ENCRYPTED PASSWORD 'gauravpant';
+CREATE ROLE
+
+postgres=# create table fdwtest (id int);
+CREATE TABLE
+
+postgres=# insert into fdwtest values (1);
+INSERT 0 1
+
+postgres=# select * from fdwtest;
+ id
+----
+  1
+(1 row)
+
+*************************
+Additions in pg_hba.conf
+*************************
+# "local" is for Unix domain socket connections only
+local   all             "fdw_user"                                scram-sha-256
+
+# IPv4 local connections:
+host all fdw_user 10.0.0.15/32 scram-sha-256
+
+============
+> Local Node:
+============
+postgres=# create extension postgres_fdw;
+CREATE EXTENSION
+
+postgres=# CREATE SERVER foreigndb_fdw FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host '10.0.0.13', port '5432', dbname 'postgres');
+CREATE SERVER
+
+postgres=# select * from pg_foreign_server;
+  oid  |    srvname    | srvowner | srvfdw | srvtype | srvversion | srvacl |                 srvoptions
+-------+---------------+----------+--------+---------+------------+--------+--------------------------------------------
+ 17136 | foreigndb_fdw |       10 |  17132 |         |            |        | {host=10.0.0.13,port=5432,dbname=postgres}
+(1 row)
+
+postgres=# CREATE USER MAPPING for postgres SERVER foreigndb_fdw OPTIONS (user 'fdw_user', password 'gauravpant');
+CREATE USER MAPPING
+postgres=# select * from pg_user_mappings;
+ umid  | srvid |    srvname    | umuser | usename  |              umoptions
+-------+-------+---------------+--------+----------+-------------------------------------
+ 17137 | 17136 | foreigndb_fdw |     10 | postgres | {user=fdw_user,password=gauravpant}
+(1 row)
+
+postgres=# CREATE FOREIGN TABLE fdwtest_local (id int) server foreigndb_fdw options(table_name 'fdwtest');
+CREATE FOREIGN TABLE
+
+postgres=# select * from pg_foreign_table;
+ ftrelid | ftserver |      ftoptions
+---------+----------+----------------------
+   17138 |    17136 | {table_name=fdwtest}
+(1 row)
+
+postgres=# select * from fdwtest_local;
+ id
+----
+  1
+(1 row)
+
