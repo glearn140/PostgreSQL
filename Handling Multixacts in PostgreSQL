@@ -1,0 +1,142 @@
+1. Created a table 'test' and inserted few rows in it.
+
+2. Created a file and inserted below entries multiple times to acquire a SHARE LOCK on the table rows when run:
+```
+begin;
+select * from test for key share;
+commit;
+```
+
+3. **Imported this file into the EC2 instance**: 
+```
+pantgaur@c889f3ec4507 ~ % scp -i test-kp.pem /Users/pantgaur/Documents/multix.sql ec2-user@3.86.219.45:/home/ec2-user/
+multix.sql
+```
+
+4. Updated the below parameters in the database:
+
+```
+mvcc=# show autovacuum_multixact_freeze_max_age;
+ autovacuum_multixact_freeze_max_age
+-------------------------------------
+ 100000
+(1 row)
+
+mvcc=# alter system set vacuum_freeze_min_age=0;
+ALTER SYSTEM
+mvcc=# alter system set vacuum_freeze_table_age=0;
+ALTER SYSTEM
+mvcc=# alter system set vacuum_multixact_freeze_min_age=0;
+ALTER SYSTEM
+mvcc=# alter system set vacuum_multixact_freeze_table_age=0;
+ALTER SYSTEM
+mvcc=# select pg_reload_conf();
+ pg_reload_conf
+----------------
+ t
+(1 row)
+```
+
+5. Ran this command on multiple database sessions simultaneously using the below command:
+
+```
+mvcc=> \i multix.sql
+```
+
+6. Monitored the shared locks using below command. Here, "locker" column gives the multixact id.
+```
+mvcc=> select * from pgrowlocks('test'); \watch 1.5
+ locked_row | locker | multi |                    xids                     |                                               modes                                               |              pids
+------------+--------+-------+---------------------------------------------+---------------------------------------------------------------------------------------------------+---------------------------------
+ (0,1)      | 525416 | t     | {502751,502752,502753,502754,502755,502756} | {"For Key Share","For Key Share","For Key Share","For Key Share","For Key Share","For Key Share"} | {2101,2872,2218,2489,3663,3669}
+ (0,2)      | 525416 | t     | {502751,502752,502753,502754,502755,502756} | {"For Key Share","For Key Share","For Key Share","For Key Share","For Key Share","For Key Share"} | {2101,2872,2218,2489,3663,3669}
+ (0,3)      | 525416 | t     | {502751,502752,502753,502754,502755,502756} | {"For Key Share","For Key Share","For Key Share","For Key Share","For Key Share","For Key Share"} | {2101,2872,2218,2489,3663,3669}
+ (0,4)      | 525416 | t     | {502751,502752,502753,502754,502755,502756} | {"For Key Share","For Key Share","For Key Share","For Key Share","For Key Share","For Key Share"} | {2101,2872,2218,2489,3663,3669}
+ (0,5)      | 525416 | t     | {502751,502752,502753,502754,502755,502756} | {"For Key Share","For Key Share","For Key Share","For Key Share","For Key Share","For Key Share"} | {2101,2872,2218,2489,3663,3669}
+ (0,6)      | 525416 | t     | {502751,502752,502753,502754,502755,502756} | {"For Key Share","For Key Share","For Key Share","For Key Share","For Key Share","For Key Share"} | {2101,2872,2218,2489,3663,3669}
+ (0,7)      | 525416 | t     | {502751,502752,502753,502754,502755,502756} | {"For Key Share","For Key Share","For Key Share","For Key Share","For Key Share","For Key Share"} | {2101,2872,2218,2489,3663,3669}
+ (0,8)      | 525416 | t     | {502751,502752,502753,502754,502755,502756} | {"For Key Share","For Key Share","For Key Share","For Key Share","For Key Share","For Key Share"} | {2101,2872,2218,2489,3663,3669}
+ (0,9)      | 525416 | t     | {502751,502752,502753,502754,502755,502756} | {"For Key Share","For Key Share","For Key Share","For Key Share","For Key Share","For Key Share"} | {2101,2872,2218,2489,3663,3669}
+```
+
+7. Once it is completed, we have several files created under:
+
+```
+mvcc=# select * from pg_get_multixact_members('1146913');
+   xid    | mode
+----------+-------
+ 10731519 | keysh
+ 10731520 | keysh
+ 10731521 | keysh
+(3 rows)
+
+[postgres@ip-10-0-0-15 data]$ cd pg_multixact/
+[postgres@ip-10-0-0-15 pg_multixact]$ ls -ltr
+total 0
+drwx------. 2 postgres postgres  42 Aug 30 03:04 offsets
+drwx------. 2 postgres postgres 114 Aug 30 03:05 members
+[postgres@ip-10-0-0-15 pg_multixact]$ cd members/
+[postgres@ip-10-0-0-15 members]$ ls -ltr
+total 3136
+-rw-------. 1 postgres postgres 262144 Aug 30 03:04 0061
+-rw-------. 1 postgres postgres 262144 Aug 30 03:04 0062
+-rw-------. 1 postgres postgres 262144 Aug 30 03:04 0063
+-rw-------. 1 postgres postgres 262144 Aug 30 03:04 0064
+-rw-------. 1 postgres postgres 262144 Aug 30 03:04 0065
+-rw-------. 1 postgres postgres 262144 Aug 30 03:05 0066
+-rw-------. 1 postgres postgres 253952 Aug 30 03:05 0067
+```
+
+8. No matter we run vacuum freeze or vacuum full, these files will not get cleaned up, even if we drop the table. Only when the autovacuum_multixact_freeze_max_age is crossed, that the files will be deleted.
+
+```
+[postgres@ip-10-0-0-15 members]$ ls -ltr
+total 3624
+-rw-------. 1 postgres postgres 262144 Aug 30 03:04 0061
+-rw-------. 1 postgres postgres 262144 Aug 30 03:04 0062
+-rw-------. 1 postgres postgres 262144 Aug 30 03:04 0063
+-rw-------. 1 postgres postgres 262144 Aug 30 03:04 0064
+-rw-------. 1 postgres postgres 262144 Aug 30 03:04 0065
+-rw-------. 1 postgres postgres 262144 Aug 30 03:05 0066
+-rw-------. 1 postgres postgres 262144 Aug 30 03:05 0067
+-rw-------. 1 postgres postgres 262144 Aug 30 03:05 0068
+-rw-------. 1 postgres postgres  40960 Aug 30 03:05 0069
+[postgres@ip-10-0-0-15 members]$ ls -ltr
+total 2296
+-rw-------. 1 postgres postgres 262144 Aug 30 03:05 0066
+-rw-------. 1 postgres postgres 262144 Aug 30 03:05 0067
+-rw-------. 1 postgres postgres 262144 Aug 30 03:05 0068
+-rw-------. 1 postgres postgres 262144 Aug 30 03:05 0069
+-rw-------. 1 postgres postgres 262144 Aug 30 03:05 006A
+-rw-------. 1 postgres postgres  57344 Aug 30 03:05 006B
+[postgres@ip-10-0-0-15 members]$ ls -ltr
+total 2200
+-rw-------. 1 postgres postgres 262144 Aug 30 03:07 007F
+-rw-------. 1 postgres postgres 262144 Aug 30 03:07 0080
+-rw-------. 1 postgres postgres 262144 Aug 30 03:07 0081
+-rw-------. 1 postgres postgres 262144 Aug 30 03:07 0082
+-rw-------. 1 postgres postgres 262144 Aug 30 03:07 0083
+-rw-------. 1 postgres postgres 262144 Aug 30 03:07 0084
+-rw-------. 1 postgres postgres 262144 Aug 30 03:07 0085
+-rw-------. 1 postgres postgres 262144 Aug 30 03:08 0086
+-rw-------. 1 postgres postgres 155648 Aug 30 03:11 0087
+```
+
+```
+mvcc=# SELECT datname, mxid_age(datminmxid) FROM pg_database;
+     datname      | mxid_age
+------------------+----------
+ postgres         |    87665
+ logi             |    87310
+ template1        |    87033
+ template0        |    86742
+ logibdr          |    86435
+ bdrpglogical     |    86139
+ largedata        |    85842
+ mvcc             |    95226
+ performance_test |    85552
+ newvac           |    85197
+ newdb            |    96828
+ test             |    95999
+(12 rows)
+```
