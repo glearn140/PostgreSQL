@@ -1,0 +1,256 @@
+-> Before diving into the implementation, let's understand the core components that power vector similarity search. We'll explore how Amazon Bedrock Knowledge Base integrates with Aurora PostgreSQL and pgvector to perform searches using Euclidean and Cosine Similarity metrics.
+
+=================
+Embeddings model:
+=================
+It takes the data provided as in input and converts it into high-dimensional numerical vectors that would be stored in a vector store. In our case, we used 'Titan Text Embeddings V2'. Text embeddings represent meaningful vector representations of unstructured text such as documents, paragraphs, and sentences. You input a body of text and the output is a (1 x n) vector. You can use embedding vectors for a wide variety of applications. It can intake up to 8,192 tokens or 50,000 characters and outputs a vector of 1,024 dimensions in case of 'Titan Text Embeddings V2'. The model is optimized for text retrieval tasks, but can also be used for additional tasks, such as semantic similarity and clustering.
+
+=============
+Vector store:
+=============
+Vector stores are specialized databases designed to store and efficiently retrieve vector embeddings (numerical representations of data). In our case it is an Aurora PostgreSQL instance with 'vector' extension installed.
+
+==========================
+Vector Similarity Search:
+==========================
+
+-> It is a technique to find the most similar vectors to a query vector based on distance metrics.
+
+==================
+Distance Metrics:
+==================
+These provide a way to measure the similarity or dissimilarity between two vectors. The choice of distance metric will ultimately depend on the specific application and the type of data being analyzed. Here are the key metrics we'll use in our implementation:
+
+    1. Euclidean Distance: Measures the straight-line distance between two vectors in a multidimensional space. It’s calculated as the square root of the sum of the squares of the differences between the corresponding elements of the two vectors.
+
+    2. Cosine Similarity: Measures the similarity between two vectors based on their dot product. It’s calculated as the dot product of the two vectors divided by the product of their magnitudes.
+
+<<NOTE>>: To understand the steps to implement the Bedrock Knowledge Base with Aurora PostgreSQL, please refer to the article: https://guide.aws.dev/articles/ARbXhDPELTSm62n1ZzOF0oMQ/leveraging-amazon-bedrock-knowledge-base-with-aurora-postgresql-and-pgvector
+
+
+-> To understand vector similarity search better, let's walk through these practical examples:
+
+1. Verify that the extension pgvector is installed in the database:
+
+postgres=> SELECT extversion FROM pg_extension WHERE extname='vector';
+ extversion 
+------------
+ 0.8.0
+(1 row)
+
+2. Create a table to store vector embeddings.
+
+vectdb2=> CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(3));
+CREATE TABLE
+vectdb2=> INSERT INTO items (embedding) VALUES ('[1,2,3]'), ('[4,5,6]');
+INSERT 0 2
+vectdb2=> insert into items (embedding) VALUES ('[7,8,9]'),('[11,12,13]');
+INSERT 0 2
+
+vectdb2=> select * from items;
+id | embedding
+----+------------
+1 | [1,2,3]
+2 | [4,5,6]
+3 | [7,8,9]
+4 | [11,12,13]
+(4 rows)
+vectdb2=> SELECT * FROM items ORDER BY embedding ↔ '[3,1,2]' LIMIT 5;
+id | embedding
+----+------------
+1 | [1,2,3]
+2 | [4,5,6]
+3 | [7,8,9]
+4 | [11,12,13]
+(4 rows)
+
+
+--> Here is an example of using vector search calculates the distance using Euclidean Distance:
+
+============================
+Example: Euclidean Distance
+============================
+
+vectdb2=> SELECT * FROM items WHERE id != 1 ORDER BY embedding ↔ (SELECT embedding FROM items WHERE id = 1) LIMIT 5;
+id | embedding
+----+------------
+2 | [4,5,6]
+3 | [7,8,9]
+4 | [11,12,13]
+(3 rows)
+
+vectdb2=> SELECT * FROM items WHERE id != 1 ORDER BY embedding ↔ (SELECT embedding FROM items WHERE id = 1) LIMIT 2;
+id | embedding
+----+-----------
+2 | [4,5,6]
+3 | [7,8,9]
+(2 rows)
+
+vectdb2=> SELECT * FROM items WHERE embedding ↔ '[3,1,2]' < 5;
+id | embedding
+----+-----------
+1 | [1,2,3]
+(1 row)
+
+
+-> One question that comes to mind, how is the above result calculated? In the above search, we used the Euclidean Distance (<->) which is used to measure the straight-line distance between two points in Euclidean space.
+
+========================================================
+1. Using Euclidean Distance formula = √((x₂-x₁)² + (y₂-y₁)² + (z₂-z₁)²)
+========================================================
+Let's break down the calculation for each row to understand why only [1,2,3] has a distance < 5 from [3,1,2]:
+
+-> For id=1 [1,2,3] compared to [3,1,2], the distance would be calculated as below:
+
+√((3-1)² + (1-2)² + (2-3)²)
+= √((2)² + (-1)² + (-1)²)
+= √(4 + 1 + 1)
+= √6
+≈ 2.4494 < 5, which is less than 5 and hence we get only 1 row output for the query: ***SELECT * FROM items WHERE embedding ↔ '[3,1,2]' < 5;*
+
+=> Using the Euclidean Distance formula, we can calculate the distance as shown below:
+
+1. For the table 'items' with id=1. let's assume there are 2 points A and B;
+
+Point A: [3,1,2]
+Point B: [1,2,3]
+
+- Distance as calculated above is 2.449 which is less than 5.
+
+2. For id=2;
+
+Point A: [3,1,2]
+Point B: [4,5,6]
+
+Euclidean Distance = √(3-4)² + (1-5)² + (2-6)²)
+
+√(-1)² + (-4)² + (-4)²)
+
+√1+16+16
+
+√33 = 5.7445 which is greater than 5.
+
+3. For id=3;
+
+Point A: [3,1,2]
+Point B: [7,8,9]
+
+Euclidean Distance = √(3-7)² + (1-8)² + (2-9)²)
+
+√(-4)² + (-7)² + (-7)²)
+
+√16+49+49
+
+√114 = 10.6770 which is greater than 5.
+
+4. For id=4;
+
+Point A: [3,1,2]
+Point B: [11,12,13]
+
+Euclidean Distance = √(3-11)² + (1-12)² + (2-13)²)
+
+√(-8)² + (-11)² + (-11)²)
+
+√64+121+121
+
+√114 = 17.4928 which is greater than 5.
+
+-> Now that we have the above calculations where we identified that the distance between Point A and Point B would be greater than 5 for the id = 2,3,4. Let's run the query in the database and see what happens?
+
+vectdb2=> SELECT * FROM items WHERE embedding ↔ '[3,1,2]' > 5;
+id | embedding
+----+------------
+2 | [4,5,6]
+3 | [7,8,9]
+4 | [11,12,13]
+(3 rows)
+
+→ The above result set matches our calculations.
+
+========================================================
+2. Using Cosine Distance formula, similarity is calculated => 1 - (dot_product(v1,v2) / (|v1| * |v2|)) , where |v| is the magnitude/length = √(x² + y² + z²)
+========================================================
+    
+Let's see what happens when we switch to the Cosine Distance Formula. It is calculated as shown below:
+
+-> For id=1; comparison is done between the 2 points:
+
+    Point A: [3,1,2]
+
+    Point B: [1,2,3]
+
+- dot_product = [(1×3 + 2×1 + 3×2)] = 3 + 2 + 6 = 11
+- Magnitude |[1,2,3]| = √(1² + 2² + 3²) = √(1 + 4 + 9) = √14
+
+Magnitude |[3,1,2]| = √(3² + 1² + 2²) = √(9 + 1 + 4) = √14
+
+- Cosine Similarity = (11 / (√14 × √14)) = 0.785
+cosine distance = 1 - Cosine Similarity
+= 1 - 0.785
+≈ 0.215`
+
+-> For id=2; comparison is done between the 2 points:
+
+    Point A: [3,1,2]
+
+    Point B: [4,5,6]
+
+dot_product = [(4×3 + 5×1 + 6×2)] = 12 + 5 + 12 = 29
+
+Magnitude |[4,5,6]| = √(4² + 5² + 6²) = √(16 + 25 + 36) = √77
+
+Magnitude |[3,1,2]| = √(3² + 1² + 2²) = √(9 + 1 + 4) = √14
+
+
+Cosine Similarity = (29 / (√77 × √14)) = 0.883
+Cosine Distance = 1 - Cosine Similarity
+                = 1 - 0.883
+                ≈ 0.117 
+
+-> For id=3; comparison is done between the 2 points:
+
+    Point A: [3,1,2]
+
+    Point B: [7,8,9]
+
+dot_product = [(7×3 + 8×1 + 9×2)] = 21 + 8 + 18 = 47
+
+Magnitude |[7,8,9]| = √(7² + 8² + 9²) = √(49 + 64 + 81) = √194
+
+Magnitude |[3,1,2]| = √(3² + 1² + 2²) = √(9 + 1 + 4) = √14
+
+
+Cosine Similarity = (47 / (√194 × √14)) = 0.902
+Cosine Distance = 1 - Cosine Similarity
+                = 1 - 0.902
+                ≈ 0.098 
+
+-> For id=4; comparison is done between the 2 points:
+
+    Point A: [3,1,2]
+
+    Point B: [11,12,13]
+
+dot_product = [(11×3 + 12×1 + 13×2)] = 33 + 12 + 26 = 71
+
+Magnitude |[11,12,13]| = √(11² + 12² + 13²) = √(121 + 144 + 169) = √434
+
+Magnitude |[3,1,2]| = √(3² + 1² + 2²) = √(9 + 1 + 4) = √14
+
+
+Cosine Similarity = (71 / (√434 × √14)) = 0.911
+Cosine Distance = 1 - Cosine Similarity
+                = 1 - 0.902
+                ≈ 0.089 
+
+-> Now that we have the above calculations using Cosine Distance, let's run the query in the database:
+
+vectdb2=> SELECT * FROM items WHERE embedding <=> '[3,1,2]' > 0.1;
+ id | embedding
+----+-----------
+  1 | [1,2,3]
+  2 | [4,5,6]
+(2 rows)
+
+-> As we can see the above output displays 2 rows because the Cosine distance for these rows is greater than 0.1, i.e. 0.215 and 0.117 respectively (as calculated above)
