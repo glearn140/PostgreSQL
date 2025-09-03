@@ -1,0 +1,342 @@
+postgres=# SELECT * FROM heap_page_items(get_raw_page('mvcc',0)) \gx
+-[ RECORD 1 ]-----------
+lp          | 1
+lp_off      | 8160
+lp_flags    | 1
+lp_len      | 28
+t_xmin      | 1080
+t_xmax      | 0
+t_field3    | 0
+t_ctid      | (0,1)
+**t_infomask2 | 1**
+**t_infomask  | 2816**
+t_hoff      | 24
+t_bits      |
+t_oid       |
+t_data      | \x01000000
+-[ RECORD 2 ]-----------
+lp          | 2
+lp_off      | 8128
+lp_flags    | 1
+lp_len      | 28
+t_xmin      | 1080
+t_xmax      | 0
+t_field3    | 0
+t_ctid      | (0,2)
+**t_infomask2 | 1**
+**t_infomask  | 2816**
+t_hoff      | 24
+t_bits      |
+t_oid       |
+t_data      | \x02000000
+
+postgres=# SELECT **heap_tuple_infomask_flags**(2816, 0);
+                            heap_tuple_infomask_flags
+----------------------------------------------------------------------------------
+ ("{HEAP_XMIN_COMMITTED,HEAP_XMIN_INVALID,HEAP_XMAX_INVALID}",{HEAP_XMIN_FROZEN})
+(1 row)
+
+postgres=# SELECT t_ctid, raw_flags, combined_flags FROM heap_page_items(get_raw_page('mvcc', 0)), LATERAL heap_tuple_infomask_flags(t_infomask, t_infomask2) WHERE t_infomask IS NOT NULL OR t_infomask2 IS NOT NULL;
+ t_ctid |                         raw_flags                         |   combined_flags
+--------+-----------------------------------------------------------+--------------------
+ (0,1)  | {HEAP_XMIN_COMMITTED,HEAP_XMIN_INVALID,HEAP_XMAX_INVALID} | {HEAP_XMIN_FROZEN}
+ (0,2)  | {HEAP_XMIN_COMMITTED,HEAP_XMIN_INVALID,HEAP_XMAX_INVALID} | {HEAP_XMIN_FROZEN}
+(2 rows)
+
+postgres=# insert into mvcc values (3),(4);
+INSERT 0 2
+
+postgres=# SELECT t_ctid, raw_flags, combined_flags FROM heap_page_items(get_raw_page('mvcc', 0)), LATERAL heap_tuple_infomask_flags(t_infomask, t_infomask2) WHERE t_infomask IS NOT NULL OR t_infomask2 IS NOT NULL;
+ t_ctid |                         raw_flags                         |   combined_flags
+--------+-----------------------------------------------------------+--------------------
+ (0,1)  | {HEAP_XMIN_COMMITTED,HEAP_XMIN_INVALID,HEAP_XMAX_INVALID} | {HEAP_XMIN_FROZEN}
+ (0,2)  | {HEAP_XMIN_COMMITTED,HEAP_XMIN_INVALID,HEAP_XMAX_INVALID} | {HEAP_XMIN_FROZEN}
+ (0,3)  | {HEAP_XMAX_INVALID}                                       | {}
+ (0,4)  | {HEAP_XMAX_INVALID}                                       | {}
+(4 rows)
+
+postgres=# update mvcc set id=5 where id=4;
+UPDATE 1
+postgres=# SELECT t_ctid, raw_flags, combined_flags FROM heap_page_items(get_raw_page('mvcc', 0)), LATERAL heap_tuple_infomask_flags(t_infomask, t_infomask2) WHERE t_infomask IS NOT NULL OR t_infomask2 IS NOT NULL;
+ t_ctid |                         raw_flags                         |   combined_flags
+--------+-----------------------------------------------------------+--------------------
+ (0,1)  | {HEAP_XMIN_COMMITTED,HEAP_XMIN_INVALID,HEAP_XMAX_INVALID} | {HEAP_XMIN_FROZEN}
+ (0,2)  | {HEAP_XMIN_COMMITTED,HEAP_XMIN_INVALID,HEAP_XMAX_INVALID} | {HEAP_XMIN_FROZEN}
+ (0,3)  | {HEAP_XMIN_COMMITTED,HEAP_XMAX_INVALID}                   | {}
+ (0,5)  | {HEAP_XMIN_COMMITTED,HEAP_HOT_UPDATED}                    | {}
+ (0,5)  | {HEAP_XMAX_INVALID,HEAP_UPDATED,HEAP_ONLY_TUPLE}          | {}
+(5 rows)
+
+postgres=# vacuum mvcc;
+VACUUM
+postgres=# SELECT t_ctid, raw_flags, combined_flags FROM heap_page_items(get_raw_page('mvcc', 0)), LATERAL heap_tuple_infomask_flags(t_infomask, t_infomask2) WHERE t_infomask IS NOT NULL OR t_infomask2 IS NOT NULL;
+ t_ctid |                              raw_flags                               |   combined_flags
+--------+----------------------------------------------------------------------+--------------------
+ (0,1)  | {HEAP_XMIN_COMMITTED,HEAP_XMIN_INVALID,HEAP_XMAX_INVALID}            | {HEAP_XMIN_FROZEN}
+ (0,2)  | {HEAP_XMIN_COMMITTED,HEAP_XMIN_INVALID,HEAP_XMAX_INVALID}            | {HEAP_XMIN_FROZEN}
+ (0,3)  | {HEAP_XMIN_COMMITTED,HEAP_XMAX_INVALID}                              | {}
+ (0,5)  | {HEAP_XMIN_COMMITTED,HEAP_XMAX_INVALID,HEAP_UPDATED,HEAP_ONLY_TUPLE} | {}
+(4 rows)
+
+postgres=# vacuum freeze mvcc;
+VACUUM
+
+postgres=# select * from heap_page_items(get_raw_page('mvcc', 0)), LATERAL heap_tuple_infomask_flags(t_infomask, t_infomask2) WHERE t_infomask IS NOT NULL OR t_infomask2 IS NOT NULL \gx
+-[ RECORD 1 ]--+---------------------------------------------------------------------------------------
+lp             | 1
+lp_off         | 8160
+lp_flags       | 1
+lp_len         | 28
+t_xmin         | 1080
+t_xmax         | 0
+t_field3       | 0
+t_ctid         | (0,1)
+t_infomask2    | 1
+t_infomask     | 2816
+t_hoff         | 24
+t_bits         |
+t_oid          |
+t_data         | \x01000000
+raw_flags      | {HEAP_XMIN_COMMITTED,HEAP_XMIN_INVALID,HEAP_XMAX_INVALID}
+combined_flags | {HEAP_XMIN_FROZEN}
+-[ RECORD 2 ]--+---------------------------------------------------------------------------------------
+lp             | 2
+lp_off         | 8128
+lp_flags       | 1
+lp_len         | 28
+t_xmin         | 1080
+t_xmax         | 0
+t_field3       | 0
+t_ctid         | (0,2)
+t_infomask2    | 1
+t_infomask     | 2816
+t_hoff         | 24
+t_bits         |
+t_oid          |
+t_data         | \x02000000
+raw_flags      | {HEAP_XMIN_COMMITTED,HEAP_XMIN_INVALID,HEAP_XMAX_INVALID}
+combined_flags | {HEAP_XMIN_FROZEN}
+-[ RECORD 3 ]--+---------------------------------------------------------------------------------------
+lp             | 3
+lp_off         | 8096
+lp_flags       | 1
+lp_len         | 28
+t_xmin         | 1082
+t_xmax         | 0
+t_field3       | 0
+t_ctid         | (0,3)
+t_infomask2    | 1
+t_infomask     | 2816
+t_hoff         | 24
+t_bits         |
+t_oid          |
+t_data         | \x03000000
+raw_flags      | {HEAP_XMIN_COMMITTED,HEAP_XMIN_INVALID,HEAP_XMAX_INVALID}
+combined_flags | {HEAP_XMIN_FROZEN}
+-[ RECORD 4 ]--+---------------------------------------------------------------------------------------
+lp             | 5
+lp_off         | 8064
+lp_flags       | 1
+lp_len         | 28
+t_xmin         | 1083
+t_xmax         | 0
+t_field3       | 0
+t_ctid         | (0,5)
+t_infomask2    | 32769
+t_infomask     | 11008
+t_hoff         | 24
+t_bits         |
+t_oid          |
+t_data         | \x05000000
+raw_flags      | {HEAP_XMIN_COMMITTED,HEAP_XMIN_INVALID,HEAP_XMAX_INVALID,HEAP_UPDATED,HEAP_ONLY_TUPLE}
+combined_flags | {HEAP_XMIN_FROZEN}
+```
+
+postgres=# truncate table mvcc;
+TRUNCATE TABLE
+postgres=# insert into mvcc values (1);
+INSERT 0 1
+
+postgres=# select * from heap_page_items(get_raw_page('mvcc', 0)), LATERAL heap_tuple_infomask_flags(t_infomask, t_infomask2) WHERE t_infomask IS NOT NULL OR t_infomask2 IS NOT NULL \gx
+```
+-[ RECORD 1 ]--+--------------------
+lp             | 1
+lp_off         | 8160
+lp_flags       | 1
+lp_len         | 28
+t_xmin         | 1085
+t_xmax         | 0
+t_field3       | 0
+t_ctid         | (0,1)
+t_infomask2    | 1
+t_infomask     | 2048
+t_hoff         | 24
+t_bits         |
+t_oid          |
+t_data         | \x01000000
+raw_flags      | {HEAP_XMAX_INVALID}
+combined_flags | {}``
+```
+``
+postgres=# update mvcc set id=2 ;
+UPDATE 1
+postgres=# select * from heap_page_items(get_raw_page('mvcc', 0)), LATERAL heap_tuple_infomask_flags(t_infomask, t_infomask2) WHERE t_infomask IS NOT NULL OR t_infomask2 IS NOT NULL \gx
+```
+-[ RECORD 1 ]--+-------------------------------------------------
+lp             | 1
+lp_off         | 8160
+lp_flags       | 1
+lp_len         | 28
+t_xmin         | 1085
+t_xmax         | 1086
+t_field3       | 0
+t_ctid         | (0,2)
+t_infomask2    | 16385
+t_infomask     | 256
+t_hoff         | 24
+t_bits         |
+t_oid          |
+t_data         | \x01000000
+raw_flags      | {HEAP_XMIN_COMMITTED,HEAP_HOT_UPDATED}
+combined_flags | {}
+-[ RECORD 2 ]--+-------------------------------------------------
+lp             | 2
+lp_off         | 8128
+lp_flags       | 1
+lp_len         | 28
+t_xmin         | 1086
+t_xmax         | 0
+t_field3       | 0
+t_ctid         | (0,2)
+t_infomask2    | 32769
+t_infomask     | 10240
+t_hoff         | 24
+t_bits         |
+t_oid          |
+t_data         | \x02000000
+raw_flags      | {HEAP_XMAX_INVALID,HEAP_UPDATED,HEAP_ONLY_TUPLE}
+combined_flags | {}
+```
+
+postgres=# vacuum freeze mvcc;
+VACUUM
+postgres=# select * from heap_page_items(get_raw_page('mvcc', 0)), LATERAL heap_tuple_infomask_flags(t_infomask, t_infomask2) WHERE t_infomask IS NOT NULL OR t_infomask2 IS NOT NULL \gx
+```
+-[ RECORD 1 ]--+---------------------------------------------------------------------------------------
+lp             | 2
+lp_off         | 8160
+lp_flags       | 1
+lp_len         | 28
+t_xmin         | 1086
+t_xmax         | 0
+t_field3       | 0
+t_ctid         | (0,2)
+t_infomask2    | 32769
+t_infomask     | 11008
+t_hoff         | 24
+t_bits         |
+t_oid          |
+t_data         | \x02000000
+raw_flags      | {HEAP_XMIN_COMMITTED,HEAP_XMIN_INVALID,HEAP_XMAX_INVALID,HEAP_UPDATED,HEAP_ONLY_TUPLE}
+combined_flags | {HEAP_XMIN_FROZEN}
+```
+
+> [!important]
+> - Observations for FREEZE
+>   
+>   - Link followed: https://www.interdb.jp/pg/pgsql06/03.html
+
+![](Pasted%20image%2020240530205358.png)
+
+**vacuum_freeze_min_age** = 1370
+**vacuum_freeze_table_age** = 1400
+**datfrozenxid** = 722
+mvcc=# select **txid_current**();
+ txid_current
+--------------
+         3335
+(1 row)
+
+722 < (3335 - 1370) => 722 < 1935
+**freezeLimit_txid** = (3335 - 1370) = **1965** <== **Important**
+
+```
+mvcc=# SELECT * FROM heap_page_items(get_raw_page('sortdata', 6));
+LOG:  statement: SELECT * FROM heap_page_items(get_raw_page('sortdata', 6));
+ lp  | lp_off | lp_flags | lp_len | t_xmin | t_xmax | t_field3 | t_ctid  | t_infomask2 | t_infomask | t_hoff | t_bits | t_oid |   t_data
+-----+--------+----------+--------+--------+--------+----------+---------+-------------+------------+--------+--------+-------+------------
+   1 |   8160 |        1 |     28 |   1528 |      0 |      153 | (6,1)   |           1 |       2304 |     24 |        |       | \x01000000
+   2 |   8128 |        1 |     28 |   1528 |      0 |      154 | (6,2)   |           1 |       2304 |     24 |        |       | \x01000000
+   .....
+   .....
+
+mvcc=# SELECT * FROM heap_page_items(get_raw_page('sortdata', 11));
+LOG:  statement: SELECT * FROM heap_page_items(get_raw_page('sortdata', 11));
+ lp  | lp_off | lp_flags | lp_len | t_xmin | t_xmax | t_field3 |  t_ctid  | t_infomask2 | t_infomask | t_hoff | t_bits | t_oid |   t_data
+-----+--------+----------+--------+--------+--------+----------+----------+-------------+------------+--------+--------+-------+------------
+   1 |   8160 |        1 |     28 |   1814 |      0 |        0 | (11,1)   |           1 |       2304 |     24 |        |       | \xdc050000
+   2 |   8128 |        1 |     28 |   1815 |      0 |        0 | (11,2)   |           1 |       2304 |     24 |        |       | \xdc050000
+   .....
+   .....
+ 152 |   3328 |        1 |     28 |   1965 |      0 |        0 | (11,152) |           1 |       2304 |     24 |        |       | \xdc050000
+ 153 |   3296 |        1 |     28 |   1966 |      0 |        0 | (11,153) |           1 |       2304 |     24 |        |       | \xdc050000
+ 154 |   3264 |        1 |     28 |   1967 |      0 |        0 | (11,154) |           1 |       2304 |     24 |        |       | \xdc050000
+ .....
+ .....
+ 225 |    992 |        1 |     28 |   2038 |      0 |        0 | (11,225) |           1 |       2304 |     24 |        |       | \xdc050000
+ 226 |    960 |        1 |     28 |   **2039** |      0 |        0 | (11,226) |           1 |       2304 |     24 |        |       | \xdc050000
+(226 rows)
+```
+
+```
+mvcc=# SELECT t_ctid, raw_flags, combined_flags FROM heap_page_items(get_raw_page('sortdata', 6)), LATERAL heap_tuple_infomask_flags(t_infomask, t_infomask2) WHERE t_infomask IS NOT NULL OR t_infomask2 IS NOT NULL;
+ t_ctid  |                raw_flags                | combined_flags
+---------+-----------------------------------------+----------------
+ (6,1)   | {HEAP_XMIN_COMMITTED,HEAP_XMAX_INVALID} | {}
+ (6,2)   | {HEAP_XMIN_COMMITTED,HEAP_XMAX_INVALID} | {}
+ (6,3)   | {HEAP_XMIN_COMMITTED,HEAP_XMAX_INVALID} | {}
+ (6,4)   | {HEAP_XMIN_COMMITTED,HEAP_XMAX_INVALID} | {}
+ (6,5)   | {HEAP_XMIN_COMMITTED,HEAP_XMAX_INVALID} | {}
+ (6,6)   | {HEAP_XMIN_COMMITTED,HEAP_XMAX_INVALID} | {}
+```
+
+--> From the above data, we can see that from data block 6 onwards, 't_infomask2' is NOT set to **HEAP_XMIN_FROZEN** and is empty. 
+
+mvcc=# **vacuum verbose sortdata;**
+LOG:  statement: vacuum verbose sortdata;
+INFO:  aggressively vacuuming "mvcc.public.sortdata"
+INFO:  finished vacuuming "mvcc.public.sortdata": index scans: 0
+pages: 0 removed, 10572 remain, 19 scanned (0.18% of total)
+tuples: 0 removed, 801862 remain, 0 are dead but not yet removable
+removable cutoff: 3336, which was 0 XIDs old when operation ended
+**new relfrozenxid: 2040, which is 512 XIDs ahead of previous value**
+**frozen: 6 pages from table (0.06% of total) had 1356 tuples frozen**
+index scan not needed: 0 pages from table (0.00% of total) had 0 dead item identifiers removed
+avg read rate: 0.000 MB/s, avg write rate: 104.765 MB/s
+buffer usage: 47 hits, 0 misses, 7 dirtied
+WAL usage: 16 records, 0 full page images, 3870 bytes
+system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+VACUUM
+
+--> After running vacuum, not just upto the **freezeLimit_txid**, but all the tuples of that entire block no. 11 where the **freezeLimit_txid** resides, are FROZEN and 't_infomask2' is set to **HEAP_XMIN_FROZEN** upto xmin=2039 which is the last tuple in the block no. 11
+
+```
+mvcc=# SELECT t_ctid, raw_flags, combined_flags FROM heap_page_items(get_raw_page('sortdata', 11)), LATERAL heap_tuple_infomask_flags(t_infomask, t_infomask2) WHERE t_infomask IS NOT NULL OR t_infomask2 IS NOT NULL;
+
+  t_ctid  |                         raw_flags                         |   combined_flags
+----------+-----------------------------------------------------------+--------------------
+ (11,1)   | {HEAP_XMIN_COMMITTED,HEAP_XMIN_INVALID,HEAP_XMAX_INVALID} | {HEAP_XMIN_FROZEN}
+ (11,2)   | {HEAP_XMIN_COMMITTED,HEAP_XMIN_INVALID,HEAP_XMAX_INVALID} | {HEAP_XMIN_FROZEN}
+ .....
+ .....
+ (11,225) | {HEAP_XMIN_COMMITTED,HEAP_XMIN_INVALID,HEAP_XMAX_INVALID} | {HEAP_XMIN_FROZEN}
+ (11,226) | {HEAP_XMIN_COMMITTED,HEAP_XMIN_INVALID,HEAP_XMAX_INVALID} | {HEAP_XMIN_FROZEN}
+
+
+mvcc=# select relfrozenxid from pg_class where relname='sortdata';
+LOG:  statement: select relfrozenxid from pg_class where relname='sortdata';
+ relfrozenxid
+--------------
+         2040
+(1 row)
+```
