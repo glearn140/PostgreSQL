@@ -9,7 +9,7 @@ commit;
 
 3. **Imported this file into the EC2 instance**: 
 ```
-pantgaur@c889f3ec4507 ~ % scp -i test-kp.pem /Users/pantgaur/Documents/multix.sql ec2-user@3.86.219.45:/home/ec2-user/
+test@db ~ % scp -i test-kp.pem /Users/pantgaur/Documents/multix.sql ec2-user@3.86.219.45:/home/ec2-user/
 multix.sql
 ```
 
@@ -70,13 +70,13 @@ mvcc=# select * from pg_get_multixact_members('1146913');
  10731521 | keysh
 (3 rows)
 
-[postgres@ip-10-0-0-15 data]$ cd pg_multixact/
-[postgres@ip-10-0-0-15 pg_multixact]$ ls -ltr
+[postgres@ip-xxxxx data]$ cd pg_multixact/
+[postgres@ip-xxxxx pg_multixact]$ ls -ltr
 total 0
 drwx------. 2 postgres postgres  42 Aug 30 03:04 offsets
 drwx------. 2 postgres postgres 114 Aug 30 03:05 members
-[postgres@ip-10-0-0-15 pg_multixact]$ cd members/
-[postgres@ip-10-0-0-15 members]$ ls -ltr
+[postgres@ip-xxxxx pg_multixact]$ cd members/
+[postgres@ip-xxxxx members]$ ls -ltr
 total 3136
 -rw-------. 1 postgres postgres 262144 Aug 30 03:04 0061
 -rw-------. 1 postgres postgres 262144 Aug 30 03:04 0062
@@ -90,7 +90,7 @@ total 3136
 8. No matter we run vacuum freeze or vacuum full, these files will not get cleaned up, even if we drop the table. Only when the autovacuum_multixact_freeze_max_age is crossed, that the files will be deleted.
 
 ```
-[postgres@ip-10-0-0-15 members]$ ls -ltr
+[postgres@ip-xxxxx members]$ ls -ltr
 total 3624
 -rw-------. 1 postgres postgres 262144 Aug 30 03:04 0061
 -rw-------. 1 postgres postgres 262144 Aug 30 03:04 0062
@@ -101,7 +101,7 @@ total 3624
 -rw-------. 1 postgres postgres 262144 Aug 30 03:05 0067
 -rw-------. 1 postgres postgres 262144 Aug 30 03:05 0068
 -rw-------. 1 postgres postgres  40960 Aug 30 03:05 0069
-[postgres@ip-10-0-0-15 members]$ ls -ltr
+[postgres@ip-xxxxx members]$ ls -ltr
 total 2296
 -rw-------. 1 postgres postgres 262144 Aug 30 03:05 0066
 -rw-------. 1 postgres postgres 262144 Aug 30 03:05 0067
@@ -109,7 +109,7 @@ total 2296
 -rw-------. 1 postgres postgres 262144 Aug 30 03:05 0069
 -rw-------. 1 postgres postgres 262144 Aug 30 03:05 006A
 -rw-------. 1 postgres postgres  57344 Aug 30 03:05 006B
-[postgres@ip-10-0-0-15 members]$ ls -ltr
+[postgres@ip-xxxxx members]$ ls -ltr
 total 2200
 -rw-------. 1 postgres postgres 262144 Aug 30 03:07 007F
 -rw-------. 1 postgres postgres 262144 Aug 30 03:07 0080
